@@ -2,6 +2,18 @@
 
 A lightweight rate‑limited API server built with Flask. It implements a token bucket algorithm to control how many requests a client can make in a given time. This project is a learning exercise in API design, middleware, and concurrency.
 
+## Project Structure
+
+```
+.
+├── app.py                 # Flask application and rate limiting middleware
+├── rate_limiter.py        # Token bucket algorithm implementation
+├── requirements.txt       # Python dependencies
+├── .env                   # Environment variables (RATE, BURST)
+├── .gitignore            # Git ignore rules
+└── README.MD             # This file
+```
+
 ## Overview
 
 Smart Limiter API exposes a single endpoint `/hello` that returns a friendly greeting. Before each request, a middleware checks the client's IP address against an in‑memory token bucket. If the client has a token available, the request proceeds; otherwise, a `429 Too Many Requests` response is returned with a `Retry-After` header.
@@ -39,7 +51,7 @@ This simple design demonstrates core concepts of API rate limiting and can serve
 1. Clone the repository (or download the source):
    ```bash
    git clone https://github.com/VishaliniSaravanan/Rate-Limiter.git
-   cd smart-limiter-api
+   cd Rate-Limiter
    ```
 
 2. Create and activate a virtual environment:
