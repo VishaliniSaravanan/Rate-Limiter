@@ -1,5 +1,7 @@
 # Smart Limiter API
 
+[![CI](https://github.com/VishaliniSaravanan/Rate-Limiter/actions/workflows/ci.yml/badge.svg)](https://github.com/VishaliniSaravanan/Rate-Limiter/actions/workflows/ci.yml)
+
 A lightweight rate‑limited API server built with Flask. It implements a token bucket algorithm to control how many requests a client can make in a given time. This project is a learning exercise in API design, middleware, and concurrency.
 
 ## Project Structure
