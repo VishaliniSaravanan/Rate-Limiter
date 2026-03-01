@@ -1,140 +1,84 @@
-# Smart Limiter API
+# RateGuard — ML-Powered API Rate Limiter
 
-[![CI](https://github.com/VishaliniSaravanan/Rate-Limiter/actions/workflows/ci.yml/badge.svg)](https://github.com/VishaliniSaravanan/Rate-Limiter/actions/workflows/ci.yml)
+A Redis-backed, ML-enhanced rate limiter with a live visual dashboard.
 
-A lightweight rate‑limited API server built with Flask. It implements a token bucket algorithm to control how many requests a client can make in a given time. This project is a learning exercise in API design, middleware, and concurrency.
-
-## Project Structure
+## Architecture
 
 ```
-.
-├── app.py                 # Flask application and rate limiting middleware
-├── rate_limiter.py        # Token bucket algorithm implementation
-├── requirements.txt       # Python dependencies
-├── .env                   # Environment variables (RATE, BURST)
-├── .gitignore            # Git ignore rules
-└── README.MD             # This file
+app.py              ← Flask app, middleware, SSE broadcaster
+rate_limiter.py     ← Redis-backed Token Bucket
+ml_classifier.py    ← ML classification engine
+static/dashboard.html ← Live visual dashboard
 ```
-
-## Overview
-
-Smart Limiter API exposes a single endpoint `/hello` that returns a friendly greeting. Before each request, a middleware checks the client's IP address against an in‑memory token bucket. If the client has a token available, the request proceeds; otherwise, a `429 Too Many Requests` response is returned with a `Retry-After` header.
-
-The rate limit is configurable via environment variables:
-- `RATE`: tokens added per second (default 5)
-- `BURST`: maximum tokens a client can accumulate (default 10)
-
-This simple design demonstrates core concepts of API rate limiting and can serve as a foundation for more advanced projects.
 
 ## Features
 
-- Token bucket rate limiting per IP address
-- Configurable rate and burst values
-- Thread‑safe in‑memory storage (no external database required)
-- Returns proper HTTP 429 status with `Retry-After` header when rate limit exceeded
-- Simple test script to simulate concurrent requests
+| Feature | How it works |
+|---|---|
+| Redis backend | Token buckets stored in Redis with TTL. Falls back to in-memory if Redis is down. |
+| Bot detection | Analyzes request timing regularity — bots have very low stddev between intervals |
+| Abuse classification | Scoring system: rate, burst, blocked count, path diversity, user-agent signals |
+| Dynamic limits | Classified users get throttled: Bot → 0.2 req/s, Abusive → 0.5 req/s |
+| Spike prediction | Compares 5s burst rate vs 60s average to predict traffic spikes |
+| Live dashboard | SSE-powered real-time feed, charts, user classification table |
 
-## Tech Stack
+## User Classifications
 
-- Python 3.8+
-- Flask (web framework)
-- python-dotenv (environment variable management)
-- threading (for concurrency control)
+- **Normal** — score < 30. Full rate limit applies.
+- **Suspicious** — score 30–59. Warning state.
+- **Abusive** — score ≥ 60, irregular timing. Heavily throttled.
+- **Bot** — score ≥ 60, very regular timing. Near-blocked (0.2 req/s).
 
 ## Setup
 
-### Prerequisites
-
-- Python 3.8 or higher installed on your system
-- Git (optional, for cloning)
-
-### Installation
-
-1. Clone the repository (or download the source):
-   ```bash
-   git clone https://github.com/VishaliniSaravanan/Rate-Limiter.git
-   cd Rate-Limiter
-   ```
-
-2. Create and activate a virtual environment:
-
-   ```bash
-   python -m venv venv
-   # On Windows:
-   venv\Scripts\activate
-   # On macOS/Linux:
-   source venv/bin/activate
-   ```
-
-3. Install dependencies:
-
-   ```bash
-   pip install flask python-dotenv
-   ```
-
-4. Create a `.env` file in the project root to override default settings (optional):
-
-   ```text
-   RATE=5
-   BURST=10
-   ```
-
-## Usage
-
-Start the Flask development server:
-
 ```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start Redis (Docker)
+docker run -d -p 6379:6379 redis:alpine
+
+# Configure (optional)
+cp .env.example .env
+# Edit RATE and BURST
+
+# Run
 python app.py
 ```
 
-The server will run at `http://127.0.0.1:5000`. Open your browser or use a tool like curl to test the endpoint:
+## Environment Variables
+
+```env
+RATE=5          # Tokens refilled per second (default: 5)
+BURST=10        # Max burst size / initial tokens (default: 10)
+REDIS_URL=redis://localhost:6379
+```
+
+
+## Test with Apache Bench
 
 ```bash
-curl http://127.0.0.1:5000/hello
+# Normal traffic
+ab -n 100 -c 5 http://localhost:5000/hello
+
+# High rate (will trigger suspicious/abusive)
+ab -n 500 -c 50 http://localhost:5000/hello
+
+# Simulate scraping (many paths)
+for path in /hello /items /search /foo /bar /baz; do
+  ab -n 20 -c 2 http://localhost:5000$path
+done
 ```
 
-Expected response:
+## API Endpoints
 
-```json
-{"message":"Hello, world!"}
-```
-
-## Testing the Rate Limiter
-
-Because the project does not include an automated test script, you can manually verify the rate limiter using curl or a load testing tool like Apache Bench.
-
-### Quick Test with curl
-
-Open two terminals. In the first, run the server. In the second, send rapid requests in a loop.
-
-**Windows Command Prompt:**
-```bash
-for /l %i in (1,1,20) do curl http://127.0.0.1:5000/hello
-```
-
-**macOS/Linux:**
-```bash
-for i in {1..20}; do curl http://127.0.0.1:5000/hello; done
-```
-
-You'll see that after the first few successful requests, the server starts returning 429 errors.
-
-### Load Testing with Apache Bench
-
-If you have Apache Bench (ab) installed, you can simulate many concurrent requests:
-
-```bash
-ab -n 30 -c 15 http://127.0.0.1:5000/hello
-```
-
-- `-n 30`: total of 30 requests
-- `-c 15`: 15 requests sent concurrently
-
-In the output, look for **Non-2xx responses** – this count shows how many requests were blocked by the rate limiter.
-
-#### Installing Apache Bench on Windows
-
-To install Apache Bench on Windows:
-1. Download the Apache binaries from [Apache Lounge](https://apachelounge.com/download/)
-2. Extract `ab.exe` from the `bin` folder
-3. Run it from that folder or add the folder to your `PATH` environment variable
+| Route | Description |
+|---|---|
+| `GET /hello` | Sample endpoint |
+| `GET /items` | Sample endpoint |
+| `GET /search?q=` | Sample endpoint |
+| `GET /dashboard` | Live dashboard UI |
+| `GET /api/stats` | Global stats JSON |
+| `GET /api/users` | All classified users |
+| `GET /api/user/<ip>` | Single user profile |
+| `GET /api/stream` | SSE live event stream |

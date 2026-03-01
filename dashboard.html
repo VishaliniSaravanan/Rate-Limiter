@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RateGuard — ML Traffic Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#060910;--surface:#0d1117;--border:#1c2333;
+  --accent:#00e5ff;--green:#00ff88;--yellow:#ffd600;
+  --red:#ff3d6b;--orange:#ff6d00;--muted:#4a5568;
+  --text:#e2e8f0;--dim:#718096;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(0,229,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.03) 1px,transparent 1px);
+  background-size:40px 40px}
+.orb{position:fixed;border-radius:50%;filter:blur(120px);opacity:.12;pointer-events:none;z-index:0}
+.orb1{width:600px;height:600px;background:var(--accent);top:-200px;right:-100px}
+.orb2{width:400px;height:400px;background:var(--green);bottom:-100px;left:-100px}
+.wrap{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:24px}
+
+/* header */
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--accent),var(--green));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.logo h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800}
+.logo h1 span{color:var(--accent)}
+.hdr-r{display:flex;align-items:center;gap:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.stxt{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+
+/* banner */
+#banner{
+  display:none;align-items:center;gap:20px;
+  padding:18px 24px;border-radius:14px;margin-bottom:20px;
+  border:2px solid;animation:pop .4s cubic-bezier(.175,.885,.32,1.275);
+  transition:all .5s
+}
+@keyframes pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+#banner.normal    {background:rgba(0,255,136,.07);border-color:rgba(0,255,136,.4)}
+#banner.suspicious{background:rgba(255,214,0,.07);border-color:rgba(255,214,0,.45)}
+#banner.abusive   {background:rgba(255,61,107,.07);border-color:rgba(255,61,107,.5);animation:pop .4s cubic-bezier(.175,.885,.32,1.275),glowRed 1.5s infinite}
+#banner.bot       {background:rgba(255,109,0,.07);border-color:rgba(255,109,0,.5);animation:pop .4s cubic-bezier(.175,.885,.32,1.275),glowOrange 1.5s infinite}
+@keyframes glowRed   {0%,100%{box-shadow:0 0 0 rgba(255,61,107,0)}50%{box-shadow:0 0 20px rgba(255,61,107,.25)}}
+@keyframes glowOrange{0%,100%{box-shadow:0 0 0 rgba(255,109,0,0)}50%{box-shadow:0 0 20px rgba(255,109,0,.25)}}
+.b-icon{font-size:36px;line-height:1;flex-shrink:0}
+.b-text h2{font-family:'Syne',sans-serif;font-size:22px;font-weight:800}
+.b-text p{font-size:12px;color:var(--dim);margin-top:4px}
+#banner.normal     .b-text h2{color:var(--green)}
+#banner.suspicious .b-text h2{color:var(--yellow)}
+#banner.abusive    .b-text h2{color:var(--red)}
+#banner.bot        .b-text h2{color:var(--orange)}
+.b-score{margin-left:auto;text-align:right;flex-shrink:0}
+.b-score .snum{font-family:'Syne',sans-serif;font-size:48px;font-weight:800;line-height:1}
+.b-score .slbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+#banner.normal     .snum{color:var(--green)}
+#banner.suspicious .snum{color:var(--yellow)}
+#banner.abusive    .snum{color:var(--red)}
+#banner.bot        .snum{color:var(--orange)}
+
+/* reason chips */
+#reasonBox{display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:20px}
+#reasonBox h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,229,255,.08);color:var(--accent);border:1px solid rgba(0,229,255,.2)}
+.chip.warn  {background:rgba(255,214,0,.1);color:var(--yellow);border-color:rgba(255,214,0,.3)}
+.chip.danger{background:rgba(255,61,107,.1);color:var(--red);border-color:rgba(255,61,107,.3)}
+.chip.bot   {background:rgba(255,109,0,.1);color:var(--orange);border-color:rgba(255,109,0,.3)}
+
+/* stat cards */
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;position:relative;overflow:hidden;transition:all .4s}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent);opacity:.5;transition:background .4s}
+.card.g::before{background:var(--green)}.card.y::before{background:var(--yellow)}.card.r::before{background:var(--red)}
+.clbl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:10px}
+.cval{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;line-height:1}
+.csub{font-size:11px;color:var(--dim);margin-top:6px}
+.spike-badge{display:inline-block;background:rgba(255,61,107,.2);color:var(--red);border:1px solid rgba(255,61,107,.4);padding:2px 10px;border-radius:4px;font-size:12px;animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* charts */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.chart-hdr{padding:16px 20px 0;margin-bottom:8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+canvas#tc{width:100%!important;height:150px!important;display:block;padding:0 16px 16px}
+.donut-wrap{display:flex;align-items:center;justify-content:center;gap:28px;padding:20px;height:100%}
+canvas#cc{width:140px!important;height:140px!important}
+.legend{display:flex;flex-direction:column;gap:10px}
+.li{display:flex;align-items:center;gap:8px;font-size:12px}
+.ld{width:10px;height:10px;border-radius:50%}
+.lc{margin-left:auto;color:var(--accent);font-weight:700;padding-left:12px;min-width:24px;text-align:right}
+
+/* table */
+.tbl-card{padding:0}
+.tbl-hdr{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.tbl-ttl{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+table{width:100%;border-collapse:collapse}
+th{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:10px 20px;text-align:left;border-bottom:1px solid var(--border)}
+td{padding:11px 20px;font-size:12px;border-bottom:1px solid rgba(28,35,51,.5)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(0,229,255,.03)}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:6px;font-size:11px;font-weight:700;text-transform:uppercase}
+.badge::before{content:'';width:6px;height:6px;border-radius:50%}
+.N{background:rgba(0,255,136,.12);color:var(--green);border:1px solid rgba(0,255,136,.3)} .N::before{background:var(--green);box-shadow:0 0 4px var(--green)}
+.S{background:rgba(255,214,0,.12);color:var(--yellow);border:1px solid rgba(255,214,0,.3)} .S::before{background:var(--yellow);box-shadow:0 0 4px var(--yellow)}
+.A{background:rgba(255,61,107,.12);color:var(--red);border:1px solid rgba(255,61,107,.3);animation:bp 1.5s infinite} .A::before{background:var(--red);box-shadow:0 0 4px var(--red)}
+.B{background:rgba(255,109,0,.12);color:var(--orange);border:1px solid rgba(255,109,0,.3);animation:bp 1.5s infinite} .B::before{background:var(--orange);box-shadow:0 0 4px var(--orange)}
+@keyframes bp{0%,100%{opacity:1}50%{opacity:.6}}
+.bar-bg{background:var(--border);border-radius:3px;height:6px;width:90px;overflow:hidden}
+.bar-fg{height:100%;border-radius:3px;transition:width .6s,background .6s}
+
+/* feed */
+.feed-hdr{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+#feed{height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.fr{display:flex;align-items:center;gap:10px;padding:6px 20px;font-size:11px;border-left:3px solid transparent;animation:si .2s ease}
+@keyframes si{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+.fr.ok{border-left-color:var(--green)}
+.fr.bl{border-left-color:var(--red);background:rgba(255,61,107,.04)}
+.ft{color:var(--muted);min-width:58px}.fi{color:var(--accent);min-width:100px}
+.fp{color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fst{font-weight:700;min-width:80px;text-align:right}
+.fst.ok{color:var(--green)}.fst.fail{color:var(--red)}
+.empty{text-align:center;color:var(--dim);padding:32px;font-size:12px}
+
+@media(max-width:900px){.g4{grid-template-columns:repeat(2,1fr)}.g2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="orb orb1"></div><div class="orb orb2"></div>
+<div class="wrap">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🛡</div>
+      <div>
+        <h1>Rate<span>Guard</span></h1>
+        <div style="font-size:10px;color:var(--dim);letter-spacing:1px;margin-top:2px">ML TRAFFIC MONITOR</div>
+      </div>
+    </div>
+    <div class="hdr-r"><div class="dot"></div><div class="stxt" id="cs">Connecting…</div></div>
+  </header>
+
+  <!-- ML Banner -->
+  <div id="banner">
+    <div class="b-icon" id="bicon">✅</div>
+    <div class="b-text">
+      <h2 id="btitle">Waiting for traffic…</h2>
+      <p id="bdesc">Send requests to see ML classification</p>
+    </div>
+    <div class="b-score">
+      <div class="snum" id="bscore">0</div>
+      <div class="slbl">Threat Score / 100</div>
+    </div>
+  </div>
+
+  <!-- Why flagged -->
+  <div id="reasonBox">
+    <h3>🔍 Why was this flagged?</h3>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="g4">
+    <div class="card"><div class="clbl">Requests / 60s</div><div class="cval" id="t60">—</div><div class="csub">Active window</div></div>
+    <div class="card g"><div class="clbl">Active Users</div><div class="cval" id="au">—</div><div class="csub">Last 60s</div></div>
+    <div class="card y"><div class="clbl">Burst / 5s</div><div class="cval" id="b5">—</div><div class="csub">Recent burst</div></div>
+    <div class="card r"><div class="clbl">Traffic Spike</div><div class="cval" id="sp">—</div><div class="csub">ML Prediction</div></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="g2">
+    <div class="card" style="padding:0">
+      <div class="chart-hdr">Requests / Second (last 30s)</div>
+      <canvas id="tc"></canvas>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="donut-wrap">
+        <canvas id="cc"></canvas>
+        <div class="legend">
+          <div class="li"><div class="ld" style="background:var(--green)"></div>Normal<span class="lc" id="cn">0</span></div>
+          <div class="li"><div class="ld" style="background:var(--yellow)"></div>Suspicious<span class="lc" id="csu">0</span></div>
+          <div class="li"><div class="ld" style="background:var(--red)"></div>Abusive<span class="lc" id="cab">0</span></div>
+          <div class="li"><div class="ld" style="background:var(--orange)"></div>Bot<span class="lc" id="cbt">0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table + Feed -->
+  <div class="g2" style="grid-template-columns:1.4fr 1fr">
+    <div class="card tbl-card">
+      <div class="tbl-hdr">
+        <div class="tbl-ttl">User Classifications</div>
+        <div style="font-size:10px;color:var(--dim)" id="uc">0 users</div>
+      </div>
+      <table>
+        <thead><tr><th>IP Address</th><th>ML Status</th><th>Threat Score</th><th>Req/60s</th><th>Blocked</th></tr></thead>
+        <tbody id="ut"><tr><td colspan="5" class="empty">No traffic yet — run ab to see ML classification</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="feed-hdr"><div class="dot" style="animation:pulse 1s infinite"></div>Live Request Feed</div>
+      <div id="feed"><div class="empty">Waiting for requests…</div></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+// ── Charts ────────────
+const tcChart = new Chart(document.getElementById('tc').getContext('2d'), {
+  type:'line',
+  data:{labels:Array(30).fill(''),datasets:[{data:Array(30).fill(0),borderColor:'#00e5ff',backgroundColor:'rgba(0,229,255,0.08)',borderWidth:2,fill:true,tension:0.4,pointRadius:0}]},
+  options:{responsive:false,animation:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:true,min:0,grid:{color:'rgba(28,35,51,.8)'},ticks:{color:'#4a5568',font:{size:9},maxTicksLimit:4}}}}
+});
+const ccChart = new Chart(document.getElementById('cc').getContext('2d'), {
+  type:'doughnut',
+  data:{labels:['Normal','Suspicious','Abusive','Bot'],datasets:[{data:[1,0,0,0],backgroundColor:['rgba(0,255,136,.7)','rgba(255,214,0,.7)','rgba(255,61,107,.7)','rgba(255,109,0,.7)'],borderColor:['#00ff88','#ffd600','#ff3d6b','#ff6d00'],borderWidth:2}]},
+  options:{responsive:false,cutout:'68%',plugins:{legend:{display:false}},animation:{duration:400}}
+});
+
+// ── Banner config ───────
+const BANNER = {
+  normal:     { title:'All Clear — Normal Traffic',        desc:'Traffic looks human and within rate limits.'},
+  suspicious: { title:'Suspicious Activity Detected',      desc:'Unusual pattern detected. Rate limit tightened to 3 req/s automatically.'},
+  abusive:    {title:'ABUSIVE Behavior — User Throttled', desc:'Extremely high request rate. Throttled to 0.5 req/s.'},
+  bot:        { title:'BOT DETECTED — Automated Traffic',  desc:'Machine-like timing detected. Near-blocked at 0.2 req/s.'},
+};
+
+const SIGNALS = {
+  rate_suspicious: {text:'High rate: 40+ req/min',          cls:'warn'},
+  rate_abusive:    {text:'Extreme rate: 100+ req/min',       cls:'danger'},
+  burst:           {text:'Request burst: 15+ in 5 seconds',  cls:'warn'},
+  bot_timing:      {text:'Robot-like timing regularity',     cls:'bot'},
+  scraping:        {text:'Scraping: 20+ unique paths',       cls:'warn'},
+  block_few:       {text:'Hit rate limit 3+ times',          cls:'warn'},
+  block_many:      {text:'Hit rate limit 8+ times',          cls:'danger'},
+  bot_ua:          {text:'Automated tool user-agent',        cls:'bot'},
+  no_ua:           {text:'Missing user-agent header',        cls:'warn'},
+};
+
+// ── SSE ───────────────────────────
+const es = new EventSource('/api/stream');
+es.onopen  = () => { document.getElementById('cs').textContent = 'LIVE'; };
+es.onerror = () => { document.getElementById('cs').textContent = 'Reconnecting…'; };
+es.onmessage = e => {
+  const m = JSON.parse(e.data);
+  if (m.type === 'request') addRow(m);
+  if (m.type === 'stats' || m.type === 'init') updateStats(m.type === 'init' ? m.stats : m);
+};
+
+// ── Stats update ──────────────
+function updateStats(s) {
+  document.getElementById('t60').textContent = s.total_requests_60s ?? '—';
+  document.getElementById('au').textContent  = s.active_users ?? '—';
+  document.getElementById('b5').textContent  = s.total_requests_5s ?? '—';
+  document.getElementById('sp').innerHTML    = s.spike_predicted
+    ? '<span class="spike-badge">⚡ SPIKE</span>' : 'Normal';
+
+  if (s.traffic_history?.length) {
+    const h = s.traffic_history.slice(-30);
+    while (h.length < 30) h.unshift(0);
+    tcChart.data.datasets[0].data = h;
+    tcChart.update('none');
+  }
+
+  const c = s.classifications || {};
+  const vals = [c.normal||0, c.suspicious||0, c.abusive||0, c.bot||0];
+  ccChart.data.datasets[0].data = vals.reduce((a,b)=>a+b,0) > 0 ? vals : [1,0,0,0];
+  ccChart.update();
+  document.getElementById('cn').textContent  = c.normal     || 0;
+  document.getElementById('csu').textContent = c.suspicious || 0;
+  document.getElementById('cab').textContent = c.abusive    || 0;
+  document.getElementById('cbt').textContent = c.bot        || 0;
+
+  fetchUsers();
+}
+
+// ── Live feed ─────────────
+const BC = {normal:'N', suspicious:'S', abusive:'A', bot:'B'};
+function addRow(r) {
+  const feed = document.getElementById('feed');
+  feed.querySelector('.empty')?.remove();
+  const t = new Date(r.ts*1000).toLocaleTimeString('en',{hour12:false});
+  const row = document.createElement('div');
+  row.className = `fr ${r.allowed?'ok':'bl'}`;
+  row.innerHTML =
+    `<span class="ft">${t}</span>` +
+    `<span class="fi">${r.user_id}</span>` +
+    `<span class="fp">${r.path}</span>` +
+    `<span class="badge ${BC[r.classification]||'N'}" style="font-size:10px">${r.classification}</span>` +
+    `<span class="fst ${r.allowed?'ok':'fail'}">${r.allowed?'✓ 200 OK':'✗ 429 BLOCKED'}</span>`;
+  feed.prepend(row);
+  while (feed.children.length > 80) feed.removeChild(feed.lastChild);
+}
+
+// ── User table + banner ───────
+async function fetchUsers() {
+  try {
+    const users = await (await fetch('/api/users')).json();
+    document.getElementById('uc').textContent = `${users.length} user${users.length!==1?'s':''}`;
+    const tb = document.getElementById('ut');
+
+    if (!users.length) {
+      tb.innerHTML = '<tr><td colspan="5" class="empty">No active users yet…</td></tr>';
+      return;
+    }
+
+    // Banner: use the worst user (first, sorted by score desc)
+    const worst = users[0];
+    updateBanner(worst.classification, worst.score, worst.signals || []);
+
+    tb.innerHTML = users.slice(0,15).map(u => {
+      const pct   = Math.min(100, u.score);
+      const color = pct>=70 ? 'var(--red)' : pct>=40 ? 'var(--yellow)' : 'var(--green)';
+      return `<tr>
+        <td style="color:var(--accent);font-weight:600">${u.user_id}</td>
+        <td><span class="badge ${BC[u.classification]||'N'}">${u.classification}</span></td>
+        <td><div style="display:flex;align-items:center;gap:8px">
+          <div class="bar-bg"><div class="bar-fg" style="width:${pct}%;background:${color}"></div></div>
+          <span style="font-size:11px;color:${color};font-weight:700">${u.score}</span>
+        </div></td>
+        <td style="color:var(--dim)">${u.requests_60s}</td>
+        <td style="color:${u.blocked_count>0?'var(--red)':'var(--dim)'};font-weight:${u.blocked_count>0?700:400}">${u.blocked_count}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {}
+}
+
+function updateBanner(classification, score, signals) {
+  const cfg = BANNER[classification] || BANNER.normal;
+  const banner = document.getElementById('banner');
+  banner.className = classification;
+  banner.style.display = 'flex';
+  document.getElementById('bicon').textContent  = cfg.icon;
+  document.getElementById('btitle').textContent = cfg.title;
+  document.getElementById('bdesc').textContent  = cfg.desc;
+  document.getElementById('bscore').textContent = Math.round(score);
+
+  const reasonBox = document.getElementById('reasonBox');
+  const chipsEl   = document.getElementById('chips');
+
+  if (signals && signals.length && classification !== 'normal') {
+    reasonBox.style.display = 'block';
+    chipsEl.innerHTML = signals.map(s => {
+      const sc = SIGNALS[s] || {text: s, cls:''};
+      return `<span class="chip ${sc.cls}">⚡ ${sc.text}</span>`;
+    }).join('');
+  } else {
+    reasonBox.style.display = 'none';
+  }
+}
+
+fetchUsers();
+setInterval(fetchUsers, 3000);
+</script>
+</body>
+</html>
